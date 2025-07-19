@@ -26,7 +26,7 @@ app.get('/api/search', async (req, res) => {
         part: 'snippet',
         q,
         type: 'music',
-        maxResults: 10,
+        maxResults: 15,
         key: YOUTUBE_API_KEY,
       }
       // No custom headers
@@ -62,7 +62,6 @@ const { nanoid } = require('nanoid');
 const rooms = {};
 
 io.on('connection', (socket) => {
-  // console.log('a user connected');
   // Create a new room
   socket.on('createRoom', (user, cb) => {
     const roomId = nanoid(6);
@@ -164,20 +163,20 @@ io.on('connection', (socket) => {
 });
 
 // Periodic sync: every 5 seconds, broadcast playback time to all clients in each room
-setInterval(() => {
-  for (const roomId in rooms) {
-    const room = rooms[roomId];
-    if (room.currentTrack && room.playback.isPlaying) {
-      // Advance playback time by 5 seconds
-      room.playback.time += 5;
-      io.to(roomId).emit('syncTick', {
-        time: room.playback.time,
-        isPlaying: room.playback.isPlaying,
-        currentTrack: room.currentTrack
-      });
-    }
-  }
-}, 5000);
+// setInterval(() => {
+//   for (const roomId in rooms) {
+//     const room = rooms[roomId];
+//     if (room.currentTrack && room.playback.isPlaying) {
+//       // Advance playback time by 5 seconds
+//       room.playback.time += 5;
+//       io.to(roomId).emit('syncTick', {
+//         time: room.playback.time,
+//         isPlaying: room.playback.isPlaying,
+//         currentTrack: room.currentTrack
+//       });
+//     }
+//   }
+// }, 5000);
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`Backend running on port ${PORT}`));
