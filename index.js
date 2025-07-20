@@ -4,7 +4,14 @@ const axios = require('axios');
 require('dotenv').config();
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: [
+    "http://localhost:5173",
+    "https://syncplayer-client.vercel.app"
+  ],
+  methods: ["GET", "POST"],
+  credentials: true
+}));
 app.use(express.json());
 
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
@@ -55,12 +62,15 @@ const { Server } = require('socket.io');
 
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: [
-    "http://localhost:5173",
-    "https://syncplayer-client.vercel.app/",
-
-  ] }
-});
+  cors: {
+    origin: [
+      "http://localhost:5173",
+      "https://syncplayer-client.vercel.app"
+    ],
+    methods: ["GET", "POST"],
+    credentials: true
+  }
+})
 
 const { nanoid } = require('nanoid');
 const rooms = {};
