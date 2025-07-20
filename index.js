@@ -55,7 +55,11 @@ const { Server } = require('socket.io');
 
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: '*' }
+  cors: { origin: [
+    "http://localhost:5173",
+    "https://syncplayer-client.vercel.app/",
+
+  ] }
 });
 
 const { nanoid } = require('nanoid');
