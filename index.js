@@ -1,61 +1,22 @@
 const express = require('express');
 const cors = require('cors');
-const axios = require('axios');
+
 require('dotenv').config();
 
 const app = express();
 app.use(cors({
   origin: [
     "http://localhost:5173",
-    "https://syncplayer-client.vercel.app"
+    "https://syncplayer-client.vercel.app",
   ],
   methods: ["GET", "POST"],
   credentials: true
 }));
+
 app.use(express.json());
 
-const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
-
-
-
-app.get('/api/search', async (req, res) => {
-  const q = req.query.q;
-  if (!q) return res.status(400).json({ error: 'Missing query' });
-
-  try {
-    if (!YOUTUBE_API_KEY) {
-      return res.status(500).json({ error: 'YouTube API key not configured' });
-    }
-    // Remove custom User-Agent header and videoCategoryId to avoid 403 errors.
-    // Use only required headers and parameters.
-    const ytRes = await axios.get('https://www.googleapis.com/youtube/v3/search', {
-      params: {
-        part: 'snippet',
-        q,
-        type: 'music',
-        maxResults: 15,
-        key: YOUTUBE_API_KEY,
-      }
-      // No custom headers
-    });
-
-    const results = ytRes.data.items.map(item => ({
-      id: item.id.videoId,
-      title: item.snippet.title,
-      artist: item.snippet.channelTitle,
-      thumbnail: item.snippet.thumbnails.high.url,
-    }));
-
-    res.json({ results });
-  } catch (err) {
-    console.error(err?.response?.data || err);
-    // Provide more specific error message if available
-    if (err.response && err.response.status === 403) {
-      return res.status(403).json({ error: 'YouTube API access forbidden (403). Check your API key and quota.' });
-    }
-    res.status(500).json({ error: 'YouTube API error' });
-  }
-});
+// Routes
+app.use('/api/search', require('./routes/search.js'));
 
 const http = require('http');
 const { Server } = require('socket.io');
@@ -65,7 +26,7 @@ const io = new Server(server, {
   cors: {
     origin: [
       "http://localhost:5173",
-      "https://syncplayer-client.vercel.app"
+      "https://syncplayer-client.vercel.app",
     ],
     methods: ["GET", "POST"],
     credentials: true
@@ -81,8 +42,13 @@ io.on('connection', (socket) => {
     const roomId = nanoid(6);
     rooms[roomId] = {
       queue: [],
-      currentTrack: null,
-      playback: { isPlaying: false, time: 0 },
+      playback: {
+        currentTrack: null,
+        playing: false,
+        lastPlayer: null,
+        playedSeconds: 0,
+        internalSeek: true
+      },
       participants: {},
       history: []
     };
@@ -99,27 +65,26 @@ io.on('connection', (socket) => {
   });
 
   // Play a track
-  socket.on('play', ({ roomId, track, time, user }) => {
+  socket.on('play', ({ roomId, track, playedSeconds, user }) => {
     if (!rooms[roomId]) return;
-    rooms[roomId].currentTrack = track;
-    rooms[roomId].playback = { isPlaying: true, time };
+    rooms[roomId].playback = { playing: true, playedSeconds, currentTrack: track, lastPlayer: user, internalSeek: true };
     rooms[roomId].history.push({ track, user, timestamp: Date.now() });
-    io.to(roomId).emit('play', { track, time, user });
+    io.to(roomId).emit('play', { track, playedSeconds, user });
   });
 
   // Pause playback
-  socket.on('pause', ({ roomId, time }) => {
+  socket.on('pause', ({ roomId, playedSeconds }) => {
     if (!rooms[roomId]) return;
     rooms[roomId].playback.isPlaying = false;
-    rooms[roomId].playback.time = time;
-    io.to(roomId).emit('pause', { time });
+    rooms[roomId].playback.playedSeconds = playedSeconds;
+    io.to(roomId).emit('pause', { playedSeconds });
   });
 
   // Seek to a specific time
-  socket.on('seek', ({ roomId, time }) => {
+  socket.on('seek', ({ roomId, playedSeconds }) => {
     if (!rooms[roomId]) return;
-    rooms[roomId].playback.time = time;
-    io.to(roomId).emit('seek', { time });
+    rooms[roomId].playback.playedSeconds = playedSeconds;
+    io.to(roomId).emit('seek', { playedSeconds });
   });
 
   // Next track in queue
@@ -128,9 +93,9 @@ io.on('connection', (socket) => {
     if (rooms[roomId].queue.length > 0) {
       const nextTrack = rooms[roomId].queue.shift();
       rooms[roomId].currentTrack = nextTrack;
-      rooms[roomId].playback = { isPlaying: true, time: 0 };
+      rooms[roomId].playback = { isPlaying: true, playedSeconds: 0 };
       rooms[roomId].history.push({ track: nextTrack, user, timestamp: Date.now() });
-      io.to(roomId).emit('play', { track: nextTrack, time: 0, user });
+      io.to(roomId).emit('play', { track: nextTrack, playedSeconds: 0, user });
       io.to(roomId).emit('queue', rooms[roomId].queue);
     }
   });
@@ -159,7 +124,6 @@ io.on('connection', (socket) => {
   socket.on('sync', ({ roomId }, cb) => {
     if (!rooms[roomId]) return;
     cb({
-      currentTrack: rooms[roomId].currentTrack,
       playback: rooms[roomId].playback,
       queue: rooms[roomId].queue,
       participants: Object.values(rooms[roomId].participants),
